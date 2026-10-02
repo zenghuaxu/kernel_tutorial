@@ -1,0 +1,14 @@
+# 环境（用 setup.sh 重建）
+.venv/
+.cuda_home/
+.tools/
+# 编译缓存（Triton / torch extensions）和临时日志
+.cache/
+__pycache__/
+*.pyc
+# profiling 产物
+*.ncu-rep
+*.nsys-rep
+02_profiling/out/
+*.json.gz
+trace*.json
