@@ -36,7 +36,7 @@ HEAD_DIM = 128
 
 def kv_cache_bytes(batch: int, seq_len: int, kv_bytes: int = 2) -> float:
     """batch 条序列、每条 seq_len 个 token 的 KV cache 总字节数（所有层，K 和 V 都算）。"""
-    raise NotImplementedError  # TODO
+    return 2 * batch * seq_len * N_LAYERS * N_KV_HEADS * HEAD_DIM * kv_bytes
 
 
 def step_time_us(batch: int, seq_len: int, new_tokens: int = 1, weight_bytes: int = 2, kv_bytes: int = 2) -> float:
@@ -45,24 +45,31 @@ def step_time_us(batch: int, seq_len: int, new_tokens: int = 1, weight_bytes: in
     FLOPs = 2 * N_PARAMS * (batch * new_tokens)                （忽略 attention 本身的 FLOPs）
     bytes = 权重读一遍 + KV cache 读一遍                          （忽略激活值）
     """
-    raise NotImplementedError  # TODO
-
+    return max(2 * N_PARAMS * (batch * new_tokens) / PEAK_BF16, \
+               (N_PARAMS * weight_bytes + kv_cache_bytes(batch, seq_len, kv_bytes)) / PEAK_BW) * 1e6
 
 def tokens_per_sec(batch: int, seq_len: int) -> float:
     """普通 decode 的吞吐上限（每秒生成的 token 总数，所有序列加起来）。"""
-    raise NotImplementedError  # TODO
+    return batch * 1e6 / step_time_us(batch, seq_len)
 
 
 def min_batch_for_compute_bound(seq_len: int, max_batch: int = 100_000):
     """decode 一步变成 compute-bound 的最小 batch；到 max_batch 还不行就返回 None。"""
-    raise NotImplementedError  # TODO
+    for batch in range(1, max_batch + 1):
+        if 2 * N_PARAMS * (batch) / PEAK_BF16 > \
+               (N_PARAMS * 2 + kv_cache_bytes(batch, seq_len, 2)) / PEAK_BW:
+            return batch
+
+    return None
 
 
 def expected_tokens_per_verify(alpha: float, k: int) -> float:
     """draft 一次猜 k 个 token，每个被接受的概率独立为 alpha。
     一次 verify 平均产出多少个 token（含 target 自己补的那 1 个）？= 1 + alpha + ... + alpha^k"""
-    raise NotImplementedError  # TODO
-
+    ans = 1
+    for _ in range(0, k):
+        ans = ans * alpha + 1
+    return ans
 
 def spec_decode_speedup(alpha: float, k: int, draft_cost: float, batch: int = 1, seq_len: int = 2048) -> float:
     """相对普通 decode 的加速比。
@@ -71,8 +78,9 @@ def spec_decode_speedup(alpha: float, k: int, draft_cost: float, batch: int = 1,
     speculative：一轮 = draft 跑 k 步（每步 draft_cost * t1）+ target 一次验证 k+1 个 token
                  （step_time_us(batch, seq_len, k + 1)），平均产出 expected_tokens_per_verify 个 token
     """
-    raise NotImplementedError  # TODO
-
+    normal_time = step_time_us(batch, seq_len) # 1 token
+    spec_time = draft_cost * normal_time * k + step_time_us(batch, seq_len, k + 1) # expected tokens
+    return (normal_time * expected_tokens_per_verify(alpha, k + 1)) / spec_time
 
 if __name__ == "__main__":
     check_equal("KV cache: 1 条序列 4096 token", kv_cache_bytes(1, 4096), 536870912)
