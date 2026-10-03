@@ -29,29 +29,32 @@ PEAK_BF16 = 989e12     # FLOP/s
 
 
 def elementwise_cost(n: int, n_inputs: int, n_outputs: int, flops_per_elem: int, dtype_bytes: int):
-    raise NotImplementedError  # TODO
-
+    return (flops_per_elem * n, (n_inputs + n_outputs) * n * dtype_bytes)
 
 def matmul_cost(M: int, N: int, K: int, dtype_bytes: int):
-    raise NotImplementedError  # TODO
-
+    return (2 * M * N * K, dtype_bytes * (M * N + N * K + M * K))
 
 def attention_cost(B: int, H: int, S: int, D: int, dtype_bytes: int, causal: bool = False):
-    raise NotImplementedError  # TODO
-
+    if not causal:
+        return (4 * B * H * S**2 * D, 4 * dtype_bytes * B * H * S * D)
+    else:
+        return (2 * B * H * S**2 * D, 4 * dtype_bytes * B * H * S * D)
 
 def roofline_time_us(flops: float, nbytes: float, peak_flops: float = PEAK_BF16, peak_bw: float = PEAK_BW) -> float:
-    raise NotImplementedError  # TODO
+    return max(flops / peak_flops, nbytes / peak_bw) * 1e6
 
 
 def is_memory_bound(flops: float, nbytes: float, peak_flops: float = PEAK_BF16, peak_bw: float = PEAK_BW) -> bool:
-    raise NotImplementedError  # TODO
+    return flops / peak_flops < nbytes / peak_bw
 
 
 def min_m_for_compute_bound(N: int, K: int, dtype_bytes: int = 2, peak_flops: float = PEAK_BF16) -> int:
     """[M, K] @ [K, N]：M 至少多大，这个 GEMM 才是 compute-bound？"""
-    raise NotImplementedError  # TODO
-
+    M = 1
+    while 1:
+        if not is_memory_bound(*matmul_cost(M, N, K, dtype_bytes), peak_flops):
+            return M
+        M = M + 1
 
 
 if __name__ == "__main__":
