@@ -36,8 +36,21 @@ def bias_scale_kernel(
     scale,
     BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr,
 ):
-    # TODO
-    pass
+    pid_n = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    x_ptrs = x_ptr + offs_m[:, None] * stride_xm + offs_n[None, :] * stride_xn
+    mask = (offs_m[:, None] < M) & (offs_n[None,: ] < N)
+    x = tl.load(x_ptrs, mask=mask).to(tl.float32)
+    b_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    b_mask = b_offs < N
+    b = tl.load(bias_ptr + b_offs, mask=b_mask).to(tl.float32)
+    offs_om = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_on = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    o_ptrs = out_ptr + offs_om[:, None] * stride_om + offs_on[None,:] * stride_on
+    o_mask = (offs_om[:, None] < M) & (offs_on[None, :] < N)
+    tl.store(o_ptrs, ((x + b[None, :]) * scale).to(out_ptr.dtype.element_ty), mask=o_mask)
 
 
 def bias_scale(x: torch.Tensor, bias: torch.Tensor, scale: float, block_m: int = 32, block_n: int = 128) -> torch.Tensor:
@@ -46,7 +59,7 @@ def bias_scale(x: torch.Tensor, bias: torch.Tensor, scale: float, block_m: int =
     M, N = x.shape
     out = torch.empty((M, N), device=x.device, dtype=x.dtype)
     BLOCK_M, BLOCK_N = block_m, block_n
-    grid = None  # TODO: 二维 grid
+    grid = (triton.cdiv(N, BLOCK_N), triton.cdiv(M, BLOCK_M))  # TODO: 二维 grid
     bias_scale_kernel[grid](
         x, bias, out, M, N,
         x.stride(0), x.stride(1), out.stride(0), out.stride(1),

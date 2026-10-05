@@ -34,17 +34,17 @@ def chain_eager(x, a, b, c):
 
 def predict_eager_kernels() -> int:
     """chain_eager 会启动几个 CUDA kernel？"""
-    raise NotImplementedError  # TODO
+    return 4
 
 
 def predict_eager_bytes(T: int, D: int, elem_bytes: int) -> int:
     """chain_eager 一共读写多少字节 HBM（忽略 [D] 大小的 a/b/c，只算 [T, D] 大小的 tensor）。"""
-    raise NotImplementedError  # TODO
+    return elem_bytes * ((T * D + T * D) + (T * D + T * D) + (T * D + T * D) + (T * D + T * D))
 
 
 def predict_fused_bytes(T: int, D: int, elem_bytes: int) -> int:
     """理想的融合 kernel：读 x 一次、写 y 一次。"""
-    raise NotImplementedError  # TODO
+    return elem_bytes * (T * D + T * D)
 
 
 chain_fused = torch.compile(chain_eager)

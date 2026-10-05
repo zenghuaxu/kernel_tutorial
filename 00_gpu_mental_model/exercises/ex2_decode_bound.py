@@ -80,7 +80,7 @@ def spec_decode_speedup(alpha: float, k: int, draft_cost: float, batch: int = 1,
     """
     normal_time = step_time_us(batch, seq_len) # 1 token
     spec_time = draft_cost * normal_time * k + step_time_us(batch, seq_len, k + 1) # expected tokens
-    return (normal_time * expected_tokens_per_verify(alpha, k + 1)) / spec_time
+    return (normal_time * expected_tokens_per_verify(alpha, k)) / spec_time
 
 if __name__ == "__main__":
     check_equal("KV cache: 1 条序列 4096 token", kv_cache_bytes(1, 4096), 536870912)

@@ -28,8 +28,13 @@ from common import bench, check, finish, gbps, report
 
 @triton.jit
 def swiglu_kernel(g_ptr, u_ptr, out_ptr, n, BLOCK: tl.constexpr):
-    # TODO
-    pass
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < n
+    g = tl.load(g_ptr + offs, mask=mask).to(tl.float32)
+    u = tl.load(u_ptr + offs, mask=mask).to(tl.float32)
+    silu_g = g * tl.sigmoid(g)
+    tl.store(out_ptr + offs, (silu_g * u).to(out_ptr.dtype.element_ty), mask=mask)
 
 
 def swiglu(g: torch.Tensor, u: torch.Tensor) -> torch.Tensor:
