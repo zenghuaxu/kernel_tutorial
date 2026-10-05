@@ -21,14 +21,18 @@ from common import check, finish
 @triton.jit
 def add_kernel(x_ptr, y_ptr, out_ptr, n, BLOCK: tl.constexpr):
     # TODO: 算出本 program 负责的下标 offs、越界 mask，load x 和 y，store x + y
-    pass
-
+    pid = tl.program_id(0)
+    off = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = off < n
+    x = tl.load(x_ptr + off, mask=mask)
+    y = tl.load(y_ptr + off, mask=mask)
+    tl.store(out_ptr + off, x + y, mask=mask)
 
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(x)
     n = x.numel()
     BLOCK = 1024
-    grid = None  # TODO: 一共需要多少个 program？
+    grid = (n + BLOCK - 1) // BLOCK, # TODO: 一共需要多少个 program？
     add_kernel[grid](x, y, out, n, BLOCK=BLOCK)
     return out
 

@@ -28,8 +28,14 @@ NUM_SMS = torch.cuda.get_device_properties(0).multi_processor_count
 
 @triton.jit
 def axpb_persistent_kernel(x_ptr, out_ptr, n, alpha, beta, BLOCK: tl.constexpr):
-    # TODO
-    pass
+    sm_id = tl.program_id(0)
+    sm_num = tl.num_programs(0)
+    loop = (n + sm_num * BLOCK - 1) // (sm_num * BLOCK)
+    for i in range(0, loop):
+        offs = i * sm_num * BLOCK + sm_id * BLOCK + tl.arange(0, BLOCK)
+        mask = offs < n
+        x = tl.load(x_ptr + offs, mask=mask)
+        tl.store(out_ptr + offs, alpha * x + beta, mask=mask)
 
 
 def axpb(x: torch.Tensor, alpha: float, beta: float, num_programs: int | None = None) -> torch.Tensor:
