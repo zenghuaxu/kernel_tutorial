@@ -13,7 +13,7 @@
   - K 方向的 mask：第 k 次循环剩下 K - k*BLOCK_K 个元素
 
 做完之后想一想：
-  - 你的 kernel 在 4096 上达到 cuBLAS 的百分之多少？1024 呢？为什么小矩阵差距更大？（数一数 1024 时有多少个 program，H100 有 132 个 SM）
+  - 你的 kernel 在 4096 上达到 cuBLAS 的百分之多少？1024 呢？为什么小矩阵差距更大？（数一数 1024 时有多少个 program，H100 有 132 个 SM，B200 有 148 个）
   - 测试里的 B 是 W.t() 视图，stride_bk=1。这时 B tile 的 load 还是合并访存吗？tl.dot 介意 B 的 tile 是哪种布局吗？
 
 运行：python 04_triton_matmul/exercises/ex1_tiled_matmul.py

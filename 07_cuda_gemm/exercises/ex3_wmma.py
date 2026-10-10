@@ -21,7 +21,7 @@
 """
 import torch
 
-from common import bench, check, finish, load_cuda, report, tflops
+from common import bench, check, finish, gpu_name, load_cuda, report, tflops
 
 SRC = r"""
 #include <mma.h>
@@ -83,5 +83,5 @@ if __name__ == "__main__":
     for name, fn in [("wmma, 从 global 装 (yours)", lambda: mod.wmma_gemm(A, B)), ("cuBLAS bf16", lambda: A @ B)]:
         ms = bench(fn)
         rows.append(dict(impl=name, ms=ms, TFLOPs=tflops(2 * S**3, ms)))
-    report(rows, f"bf16 GEMM {S}^3（共享 H100，数字有噪声）")
+    report(rows, f"bf16 GEMM {S}^3（{gpu_name()}，数字有噪声）")
     finish()

@@ -1,7 +1,7 @@
 """练习 07-2：2D 寄存器分块 SGEMM（参考答案）"""
 import torch
 
-from common import bench, check, finish, load_cuda, report, tflops
+from common import bench, check, finish, gpu_name, load_cuda, report, tflops
 
 SRC = r"""
 // block tile BM x BN，K 方向每轮 BK；每个线程算 TM x TN 个结果。
@@ -100,5 +100,5 @@ if __name__ == "__main__":
     for name, fn in [("2D blocktile (yours)", lambda: mod.sgemm_2d(A, B)), ("cuBLAS fp32", lambda: A @ B)]:
         ms = bench(fn)
         rows.append(dict(impl=name, ms=ms, TFLOPs=tflops(2 * S**3, ms)))
-    report(rows, f"SGEMM {S}^3（共享 H100，数字有噪声）")
+    report(rows, f"SGEMM {S}^3（{gpu_name()}，数字有噪声）")
     finish()

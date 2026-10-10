@@ -5,5 +5,7 @@
 """
 from .testing import check, check_equal, assert_close, bench, report, gbps, tflops, finish
 from .cuda_ext import load_cuda
+from .device import GPUSpec, gpu_name, gpu_spec
 
-__all__ = ["check", "check_equal", "assert_close", "bench", "report", "gbps", "tflops", "finish", "load_cuda"]
+__all__ = ["check", "check_equal", "assert_close", "bench", "report", "gbps", "tflops", "finish", "load_cuda",
+           "GPUSpec", "gpu_name", "gpu_spec"]

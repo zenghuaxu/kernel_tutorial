@@ -10,7 +10,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from common import bench, report, tflops
+from common import bench, gpu_name, report, tflops
 
 
 def naive_attention(q, k, v):
@@ -41,6 +41,6 @@ if __name__ == "__main__":
             ms = bench(fn)
             rows.append(dict(N=N, impl=name, ms=ms, TFLOPs=tflops(flops, ms),
                              peak_extra_MB=peak_mem_mb(fn), S_matrix_MB=s_mb))
-    report(rows, f"non-causal B={B} H={H} D={D} bf16（实测于共享 H100）")
+    report(rows, f"non-causal B={B} H={H} D={D} bf16（实测于 {gpu_name()}）")
     print("\n看点：naive 的额外显存 ≈ S 矩阵的若干倍（S、fp32 的 softmax 中间结果、P），且随 N² 增长；")
     print("SDPA 的额外显存只有输出 O 那么大。naive 的 TFLOPs 也远低于 SDPA：时间都花在搬 S/P 上了。")

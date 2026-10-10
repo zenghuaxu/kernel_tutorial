@@ -60,5 +60,5 @@ if __name__ == "__main__":
     print("\n看点 1：N=524288 时 single 版本 BLOCK=524288，却没有 spill——因为 x 只被用了一次（求和），")
     print("        编译器可以边 load 边累加，不必把整行同时放在寄存器里。softmax 要用 x 两次，就没这么幸运了")
     print("        （见 examples/online_softmax.py：N=131072 时 spill 几百个寄存器，带宽掉到 ~360 GB/s）。")
-    print("看点 2：M=64 时只有 64 个 program，132 个 SM 有一半闲着；loop 版本每轮只发出 BLOCK 个 load 就要等，")
+    print("看点 2：M=64 时只有 64 个 program，132~148 个 SM（H100 / B200）有一半以上闲着；loop 版本每轮只发出 BLOCK 个 load 就要等，")
     print("        在途的访存请求太少，带宽掉得很厉害。'行数少、行很长'时要把一行拆给多个 program。")

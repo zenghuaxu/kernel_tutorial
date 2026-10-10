@@ -4,7 +4,7 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from common import bench, check, check_equal, finish, report, tflops
+from common import bench, check, check_equal, finish, gpu_spec, report, tflops
 
 FP8_MAX = 448.0   # torch.finfo(torch.float8_e4m3fn).max
 
@@ -96,5 +96,5 @@ if __name__ == "__main__":
             a8, w8.T, scale_a=sa[:, None], scale_b=sw[None, :], out_dtype=torch.bfloat16)))),
         dict(impl="cuBLAS bf16", TFLOPS=tflops(f, bench(lambda: a @ w.T))),
     ]
-    report(rows, f"{S}^3（H100 dense 峰值：fp8 ≈ 1979，bf16 ≈ 989 TFLOPS）")
+    report(rows, f"{S}^3（{gpu_spec().mma_note()}）")
     finish()

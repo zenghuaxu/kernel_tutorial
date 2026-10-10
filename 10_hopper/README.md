@@ -1,5 +1,9 @@
 # 10 · Hopper 专属特性：TMA、wgmma、warp specialization、FP8、CuTe
 
+> **在 B200（Blackwell，sm_100）上学？** 本单元的代码都能直接跑：Triton 会把 `tl.dot` 编译成 Blackwell 的
+> `tcgen05.mma` 而不是 `wgmma`，TMA / mbarrier / FP8 的写法完全一样。讲义正文按 H100 写（数字是 H100 实测），
+> 两代的差别和 B200 实测数字集中在 [10.8 节](#108-blackwellb200上有什么不同)。练习 1 会按当前卡自动选择期望值。
+
 > 前置：单元 04（Triton GEMM）、单元 06/07（shared memory、Tensor Core 的 CUDA 视角）、单元 08（FlashAttention）。
 >
 > 学完你能：说清楚 H100 比 A100 多了什么、FA3 为什么快；在 Triton 里用 TMA 写出和 cuBLAS 持平的 GEMM；
@@ -24,7 +28,7 @@ kernel 的工作从"自己动手干活"变成"给硬件排流水线"。**
 | 规格 | 108 SM，164 KB smem/SM，40 MB L2，2.0 TB/s | 132 SM，**228 KB** smem/SM，**50 MB** L2，**3.35 TB/s** HBM3 | |
 | 峰值（dense） | bf16 312 TFLOPS | bf16 **989** / fp8 **1979** TFLOPS | |
 
-注意 `sm_90a` 里的 `a`：wgmma、setmaxnreg 这些是"架构专属"特性，只在 sm_90a 目标下可用，代码不能向前兼容到 Blackwell（sm_100 又换成了 tcgen05 + Tensor Memory）。
+注意 `sm_90a` 里的 `a`：wgmma、setmaxnreg 这些是"架构专属"特性，只在 sm_90a 目标下可用，代码不能向前兼容到 Blackwell（sm_100 又换成了 tcgen05 + Tensor Memory，见 10.8 节）。
 
 ## 10.2 "全异步"的编程模型，以及 FA3 为什么需要它
 
@@ -107,7 +111,7 @@ def kernel(a_ptr, ..., M, K, BM: tl.constexpr, BK: tl.constexpr):
 
 **关于 warp specialization**：`tl.range(..., warp_specialize=True)` 这个参数在 Triton 3.6 里存在，
 但在 H100 上实测它**没有生效**：ttgir 里没有生成 `ttg.warp_specialize` 操作，PTX 与不加时完全相同，也没有 `setmaxnreg`。
-Triton 的自动 warp specialization 目前主要面向 Blackwell。在 Hopper 上要拿到 FA3 那种显式的 producer/consumer 分工，现实的选择是：
+Triton 的自动 warp specialization 目前主要面向 Blackwell（B200 上实测确实生效，见 10.8 节）。在 Hopper 上要拿到 FA3 那种显式的 producer/consumer 分工，现实的选择是：
 
 - **CUTLASS / CuTe**（C++ 或 CuTe DSL）——FA3 本身就是用 CUTLASS 写的；
 - **Triton Gluon**（`triton.experimental.gluon`，本机可 import，有 `hopper.tma`、`mbarrier`、`warpgroup_mma`）——Triton 的"低一层"方言，布局、同步都要自己管；
@@ -166,7 +170,7 @@ Triton 的自动 warp specialization 目前主要面向 Blackwell。在 Hopper �
 
 ## 10.7 CuTe DSL 入门
 
-CUTLASS 4 带了一个 Python 前端 **CuTe DSL**（`nvidia-cutlass-dsl`，本机 4.5.2，已验证可编译运行）。
+CUTLASS 4 带了一个 Python 前端 **CuTe DSL**（`nvidia-cutlass-dsl`，setup.sh 会装，H100 上用 4.5.2、B200 上用 4.8.0 验证过可编译运行）。
 写法介于 CUDA 和 Triton 之间：像 CUDA 一样以线程为单位写 kernel，但数据划分全部用 **Layout 代数**描述。
 
 **Layout = (Shape, Stride)**，一个从逻辑坐标到偏移的函数：
@@ -214,7 +218,7 @@ compiled(...)
 
 | 文件 | 内容 | 关键词 |
 |---|---|---|
-| `ex1_ptx_features.py` | 写一个 PTX 分析器：wgmma 形状和 dtype、TMA load/store、cp.async；用它检查 6 个 kernel | 验证编译器真的用了新特性 |
+| `ex1_ptx_features.py` | 写一个 PTX 分析器：wgmma / tcgen05、形状和 dtype、TMEM、TMA load/store、cp.async；用它检查 6 个 kernel | 验证编译器真的用了新特性 |
 | `ex2_tma_persistent_matmul.py` | TMA descriptor + persistent + flatten 的 GEMM，追平 cuBLAS | TensorDescriptor、tl.range |
 | `ex3_fp8_matmul.py` | per-row 量化 + FP8 e4m3 GEMM，epilogue 里反缩放 | fp8、K-major、缩放 |
 | `ex4_cute_swiglu.py` | 用 CuTe DSL 写向量化 SwiGLU | Layout、zipped_divide、TensorSSA |
@@ -223,6 +227,50 @@ compiled(...)
 1. 练习 2 的 kernel 在 1024³ 上和 cuBLAS 比怎么样？persistent 在小矩阵上有优势吗？为什么？
 2. 把练习 3 的权重改成 `[K, N]` 存（kernel 里不再 `.T`），用练习 1 的分析器看 PTX 有什么变化，速度掉多少？
 3. 画出 FA3 的 ping-pong 时间线：两个 consumer warpgroup、每个做 GEMM0 → softmax → GEMM1，怎么错开能让 Tensor Core 一直忙？
+
+## 10.8 Blackwell（B200）上有什么不同
+
+B200 是 sm_100（`sm_100a`）。上面 wgmma、setmaxnreg 这些"a"特性不向前兼容，所以 **B200 上的 PTX 里一条 wgmma 都没有**，
+Tensor Core 换成了第五代的 `tcgen05`：
+
+| | H100 (sm_90a) | B200 (sm_100a) |
+|---|---|---|
+| MMA 指令 | `wgmma.mma_async`，一个 warpgroup（128 线程）一起发 | **`tcgen05.mma`**：**单个线程**发射，整个 CTA（或 2 个 CTA 一对，`cta_group::2`）的 MMA |
+| 累加器在哪 | 寄存器（128×256 fp32 tile 要占 consumer warpgroup 一大半寄存器） | **Tensor Memory（TMEM）**：每 SM 256 KB 的专用存储，`tcgen05.alloc` 申请，`tcgen05.ld` 读回寄存器做 epilogue |
+| 形状/类型写在哪 | 指令名里：`m64n128k16.f32.bf16.bf16` | 指令名只有 kind（`kind::f16` / `kind::tf32` / `kind::f8f6f4`），形状和类型在 *instruction descriptor* 寄存器里 |
+| 低精度 | fp8 | fp8 + **fp6 / fp4**，以及硬件 block scaling（MXFP8 / MXFP4 / NVFP4，`kind::mxf8f6f4` 等） |
+| 搬运 / 同步 | TMA + mbarrier | 一样（TMA + mbarrier），MMA 完成也通过 `tcgen05.commit` → mbarrier 通知 |
+| 规格 | 132 SM，228 KB smem/SM，50 MB L2，3.35 TB/s | **148** SM，228 KB smem/SM，**126 MB** L2，**8 TB/s** HBM3e |
+| 峰值（dense） | bf16 989 / fp8 1979 TFLOPS | bf16 **2250** / fp8 **4500** / fp4 9000 TFLOPS |
+
+对写 Triton 的人来说，大部分变化是**透明的**：同一份 `tl.dot` 代码，编译器自己改用 tcgen05 + TMEM。
+但有三点值得注意：
+
+1. **寄存器压力小了**：累加器不在寄存器里了，所以同样的 tile，B200 上 regs 明显更少（下表 TMA 128×128：H100 90 个 → B200 70 个）。
+2. **Triton 的自动 warp specialization 在 B200 上生效**：练习 2 的 kernel 在 `tl.range(..., flatten=True, warp_specialize=True)`
+   之后，ttgir 里出现 `ttg.warp_specialize`，PTX 里出现 `setmaxnreg`，8192³ 从 ~1000 提到 ~1140 TFLOPS（本机实测）。
+   在 H100 上同样的参数是空操作（10.4 节）。自己试试，然后用练习 1 的分析器看 PTX 的变化。
+3. **离峰值更远了**：B200 的 Tensor Core 快了一倍多，"搬数据"和 epilogue 更容易成为瓶颈。
+   cuBLAS / CUTLASS 在 B200 上还会用 2-CTA MMA、cluster launch control 等 Triton 目前不自动用的特性。
+
+`examples/hopper_features.py` 在 B200 上的结果（4096³，本机实测，卡空闲时）：
+
+| 写法 | tcgen05.mma | cp.async | TMA | mbarrier | 寄存器 | smem | TFLOPS |
+|---|---|---|---|---|---|---|---|
+| fp32, `input_precision="ieee"` | 0 | 24 | 0 | 0 | 127 | 32 KB | 55 |
+| fp32 默认（tf32） | 8 | 16 | 0 | 8 | 122 | 96 KB | 109 |
+| bf16 指针, stages=1 | 4 | 0 | 0 | 4 | 98 | 32 KB | 433 |
+| bf16 指针, stages=3 | 8 | 32 | 0 | 8 | 90 | 96 KB | 958 |
+| bf16 TMA 128×128 | 8 | 0 | 11 | 33 | 70 | 128 KB | 828 |
+| bf16 TMA 128×256 | 8 | 0 | 9 | 28 | 136 | 144 KB | 994 |
+| fp8 TMA 128×256×128 | 8 | 0 | 9 | 28 | 173 | 144 KB | 1814 |
+| cuBLAS bf16 | | | | | | | 1398 |
+
+其他练习在 B200 上的参考数字（8192³）：练习 2（TMA + persistent）~990 TFLOPS，cuBLAS bf16 ~1370~1430；
+练习 3（fp8）~1860 TFLOPS，`torch._scaled_mm` ~2130。
+
+延伸：CUTLASS 仓库 `examples/python/CuTeDSL/blackwell/` 下有用 tcgen05 + TMEM 写的 dense GEMM、FMHA 示例；
+PTX ISA 文档的 "Tensor Core 5th Generation Family Instructions" 一章；FlashAttention-4 / ThunderKittens 2 的 Blackwell 实现。
 
 ## 延伸阅读
 

@@ -20,7 +20,7 @@ FlashAttention 的数学核心就是 online softmax。先在一维上把它写�
 做完之后想一想：
   - 测试里有 x*300 和一个 1000 的尖峰。不减 max 直接 exp 会怎样？
   - 和 torch.softmax 比，你的版本多读了一遍输入（3 次访存 vs 2 次）。为什么 torch 能只读一遍？
-    （提示：一行 15 万个 bf16 = 300KB，放得进 shared memory 吗？H100 每 SM 228KB）
+    （提示：一行 15 万个 bf16 = 300KB，放得进 shared memory 吗？H100 / B200 每 SM 都是 228KB）
   - 单元 03 的 cross-entropy 练习，如果你做过，和这里是什么关系？
 
 运行：python 08_flash_attention/exercises/ex1_online_softmax.py
@@ -29,7 +29,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, gbps, report
+from common import bench, check, finish, gbps, gpu_name, report
 
 
 @triton.jit
@@ -81,5 +81,5 @@ if __name__ == "__main__":
     ]:
         ms = bench(fn)
         rows.append(dict(impl=name, us=ms * 1e3, GBps=gbps(nbytes, ms)))
-    report(rows, f"softmax M={M} N={N} bf16（实测于共享 H100）")
+    report(rows, f"softmax M={M} N={N} bf16（实测于 {gpu_name()}）")
     finish()

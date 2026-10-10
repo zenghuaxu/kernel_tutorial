@@ -1,7 +1,7 @@
 """单元 10 的几个参考 kernel，供示例和练习 1（PTX 分析）共用。
 
-  matmul_ptr   : 单元 04 的指针版 GEMM（Ampere 风格的 cp.async 预取 + wgmma）
-  matmul_tma   : 用 host 端 TensorDescriptor 的 GEMM（TMA 搬运 + wgmma）
+  matmul_ptr   : 单元 04 的指针版 GEMM（Ampere 风格的 cp.async 预取 + wgmma / B200 上是 tcgen05.mma）
+  matmul_tma   : 用 host 端 TensorDescriptor 的 GEMM（TMA 搬运 + wgmma / tcgen05.mma）
   fp8_matmul   : FP8 e4m3 GEMM，B 按 [N, K] 存，带 per-row / per-col 缩放
 """
 import torch

@@ -12,7 +12,7 @@
 """
 import torch
 
-from common import bench, check, gbps, load_cuda, report
+from common import bench, check, gbps, gpu_spec, load_cuda, report
 
 CUDA_SRC = r"""
 #include <ATen/cuda/CUDAContext.h>
@@ -91,4 +91,4 @@ if __name__ == "__main__":
         rows.append(dict(version=f"v{v}", us=ms * 1e3, GBps=gbps(n * 4, ms)))
     ms = bench(lambda: x.sum())
     rows.append(dict(version="torch.sum", us=ms * 1e3, GBps=gbps(n * 4, ms)))
-    report(rows, f"sum of {n} fp32（只读，HBM 峰值约 3350 GB/s）")
+    report(rows, f"sum of {n} fp32（只读，{gpu_spec().bw_note()}）")

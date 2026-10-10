@@ -19,7 +19,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, gbps, report
+from common import bench, check, finish, gbps, gpu_name, report
 
 # 复用练习 08-5 参考答案里的 combine kernel 和参考实现
 _sol = pathlib.Path(__file__).resolve().parents[1] / "solutions" / "ex5_flash_decoding.py"
@@ -132,5 +132,5 @@ if __name__ == "__main__":
         rows.append(dict(impl=f"GQA 打包, splits={splits}", us=ms * 1e3, GBps=gbps(nbytes, ms)))
     ms = bench(lambda: F.scaled_dot_product_attention(q[:, :, None], kc, vc, enable_gqa=True))
     rows.append(dict(impl="torch SDPA", us=ms * 1e3, GBps=gbps(nbytes, ms)))
-    report(rows, f"decode B={B} H={H}/{Hkv} N={N} D={D}（实测于共享 H100）")
+    report(rows, f"decode B={B} H={H}/{Hkv} N={N} D={D}（实测于 {gpu_name()}）")
     finish()

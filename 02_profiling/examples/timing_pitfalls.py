@@ -23,7 +23,7 @@ def triton_copy(x, out, block):
 
 def events_timer(fn, warmup=10, rep=50, flush_l2=True):
     """正确的计时：预热 + CUDA event + （可选）每次清 L2。返回平均毫秒。"""
-    cache = torch.empty(256 * 1024 * 1024 // 4, dtype=torch.int32, device="cuda")  # 256MB > 50MB L2
+    cache = torch.empty(256 * 1024 * 1024 // 4, dtype=torch.int32, device="cuda")  # 256MB > L2（H100 50MB，B200 126MB）
     for _ in range(warmup):
         fn()
     starts = [torch.cuda.Event(enable_timing=True) for _ in range(rep)]
@@ -63,8 +63,9 @@ if __name__ == "__main__":
     print(f"  第二次调用: {(time.perf_counter() - t) * 1e3:8.3f} ms  (含 Python launch 开销 + sync 往返)")
     print(f"  do_bench  : {do_bench(lambda: triton_copy(x, out, block)):8.3f} ms")
 
-    print("\n== 坑 3：数据还在 L2 里（H100 L2 = 50MB）==")
-    for mb in [16, 128]:
+    l2_mb = torch.cuda.get_device_properties(0).L2_cache_size >> 20
+    print(f"\n== 坑 3：数据还在 L2 里（{torch.cuda.get_device_name()} L2 = {l2_mb}MB）==")
+    for mb in [16, 4 * l2_mb]:
         n = mb * 1024 * 1024 // 4
         a = torch.randn(n, device="cuda")
         b = torch.empty_like(a)
@@ -73,8 +74,8 @@ if __name__ == "__main__":
         cold = events_timer(fn, flush_l2=True)
         print(f"  copy {mb:4d}MB: 不清 L2 {hot * 1e3:7.1f} us ({2 * mb / 1024 / hot * 1e3:5.0f} GB/s)   "
               f"清 L2 {cold * 1e3:7.1f} us ({2 * mb / 1024 / cold * 1e3:5.0f} GB/s)   do_bench {do_bench(fn) * 1e3:7.1f} us")
-    print("  → 能装进 L2 的数据反复跑，会命中 L2，测出偏乐观的数字（16MB 时快 ~20%）；")
-    print("    128MB 远大于 L2，清不清都一样。真实模型里上一层的输出未必还在 L2，所以 benchmark 默认要清。")
+    print("  → 能装进 L2 的数据反复跑，会命中 L2，测出偏乐观的数字（H100 上 16MB 时快 ~20%）；")
+    print(f"    {4 * l2_mb}MB 远大于 L2，清不清都一样。真实模型里上一层的输出未必还在 L2，所以 benchmark 默认要清。")
 
     print("\n== 坑 4：太小的 kernel，测到的是 launch 开销 ==")
     tiny = torch.randn(1024, device="cuda")

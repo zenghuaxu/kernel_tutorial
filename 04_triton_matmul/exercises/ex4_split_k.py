@@ -1,7 +1,7 @@
 """练习 04-4：split-K —— 给"矮胖"的 GEMM 找并行度
 
 问题：M、N 小而 K 很大的 GEMM（比如 LoRA、小 batch 的投影、某些 attention 的 dV 计算），
-输出 tile 很少——256x256 的输出用 64x64 tile 只有 16 个 program，132 个 SM 里 116 个闲着。
+输出 tile 很少——256x256 的输出用 64x64 tile 只有 16 个 program，H100 的 132 个 SM 里 116 个闲着（B200 有 148 个 SM，闲得更多）。
 每个 program 还要串行走完一条超长的 K 循环。
 
 split-K：把 K 切成 split_k 段，grid 变成 (tile 数, split_k)。program (t, s) 只算 tile t 在第 s 段 K 上的部分和，

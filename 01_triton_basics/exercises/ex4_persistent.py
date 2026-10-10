@@ -1,6 +1,6 @@
 """练习 01-4：persistent kernel
 
-目标：out = alpha * x + beta，但**只启动固定个数的 program**（默认 = SM 个数 132），
+目标：out = alpha * x + beta，但**只启动固定个数的 program**（默认 = SM 个数，H100 是 132，B200 是 148），
 每个 program 用循环处理多个 block。
 
   - wrapper 已写好：grid = (num_programs,)

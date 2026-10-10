@@ -28,7 +28,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, report, tflops
+from common import bench, check, finish, gpu_name, report, tflops
 
 
 @triton.jit
@@ -130,5 +130,5 @@ if __name__ == "__main__":
     ]:
         ms = bench(fn)
         rows.append(dict(impl=name, ms=ms, TFLOPs=tflops(flops, ms)))
-    report(rows, f"non-causal B={B} H={H} N={N} D={D} bf16（实测于共享 H100，有噪声）")
+    report(rows, f"non-causal B={B} H={H} N={N} D={D} bf16（实测于 {gpu_name()}，有噪声）")
     finish()

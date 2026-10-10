@@ -21,7 +21,7 @@
   - 表里三行：融合版 vs 同一个 triton matmul + 单独的 torch gelu，差多少？和省下的字节数（[M,N] bf16 读一次写一次）对得上吗？
   - cuBLAS + 单独 gelu 仍然最快——说明 Triton 主循环本身比 cuBLAS 慢。融合不能替代主循环优化，两者是叠加的。
   - 用 k = linear_act_kernel[grid](...) 拿到 handle 看 k.n_regs：gelu_tanh + 128x256 tile 时寄存器用到了多少？
-    （H100 每线程上限 255，再多就 spill 到 local memory，速度暴跌）
+    （每线程上限 255，H100 / B200 一样；再多就 spill 到 local memory，速度暴跌）
 
 运行：python 04_triton_matmul/exercises/ex3_fused_epilogue.py
 """

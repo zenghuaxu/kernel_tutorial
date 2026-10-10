@@ -12,7 +12,7 @@ import sys
 
 import torch
 
-from common import bench, check, load_cuda, report, tflops
+from common import bench, check, gpu_spec, load_cuda, report, tflops
 
 SRC = r"""
 #include <mma.h>
@@ -354,4 +354,6 @@ if __name__ == "__main__":
     rows.append(dict(kernel="7 wmma (smem)", dtype="bf16", ms=ms, TFLOPs=tflops(flops, ms)))
     ms = bench(lambda: Ab @ Bb)
     rows.append(dict(kernel="cuBLAS bf16", dtype="bf16", ms=ms, TFLOPs=tflops(flops, ms)))
-    report(rows, f"GEMM {M}x{N}x{K}（H100 SXM 峰值：fp32 SIMT ~67、tf32 TC ~495、bf16 TC ~989 TFLOPs）")
+    spec = gpu_spec()
+    report(rows, f"GEMM {M}x{N}x{K}（{spec.name} 峰值：fp32 SIMT ~{spec.fp32_tflops}、tf32 TC ~{spec.tf32_tflops}、"
+                 f"bf16 TC ~{spec.bf16_tflops} TFLOPs）")

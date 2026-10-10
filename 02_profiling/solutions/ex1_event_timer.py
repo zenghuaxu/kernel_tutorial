@@ -65,7 +65,7 @@ if __name__ == "__main__":
     rows.append(dict(case="slow first call", naive=float("nan"), mine=mine, do_bench=ref))
     check("首次调用被预热排除", mine, ref, atol=0, rtol=0.1)
 
-    # 3. 16MB copy：能放进 50MB 的 L2，不清 L2 会偏快
+    # 3. 16MB copy：能放进 L2（H100 50MB / B200 126MB），不清 L2 会偏快
     x = torch.randn(4 * 1024 * 1024, device="cuda")
     y = torch.empty_like(x)
     copy = lambda: y.copy_(x)

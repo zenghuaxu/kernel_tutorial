@@ -8,7 +8,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, report, tflops
+from common import bench, check, gpu_spec, report, tflops
 
 
 @triton.jit
@@ -45,7 +45,7 @@ def matmul_kernel(
         k_remaining = K - k * BLOCK_K
         a = tl.load(a_ptrs, mask=(offs_m[:, None] < M) & (offs_k[None, :] < k_remaining), other=0.0)
         b = tl.load(b_ptrs, mask=(offs_k[:, None] < k_remaining) & (offs_n[None, :] < N), other=0.0)
-        acc = tl.dot(a, b, acc)            # 在 H100 上编译成 wgmma（Tensor Core）
+        acc = tl.dot(a, b, acc)            # 编译成 Tensor Core 指令：H100 上是 wgmma，B200 上是 tcgen05.mma
         a_ptrs += BLOCK_K * stride_ak      # 指针前移一个 K 块
         b_ptrs += BLOCK_K * stride_bk
 
@@ -85,4 +85,4 @@ if __name__ == "__main__":
         t_cb = bench(lambda: a @ b)
         rows.append(dict(MNK=s, triton_TFLOPS=tflops(flops, t_tr), cublas_TFLOPS=tflops(flops, t_cb),
                          ratio=t_cb / t_tr))
-    report(rows, "bf16 方阵 GEMM（H100 SXM dense bf16 峰值约 989 TFLOPS；卡被训练任务共享，数字偏低且有噪声）")
+    report(rows, f"bf16 方阵 GEMM（{gpu_spec().mma_note()}；卡被别人占用时数字偏低且有噪声）")

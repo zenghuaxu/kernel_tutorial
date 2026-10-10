@@ -12,7 +12,7 @@
   - expected_tokens_per_verify(alpha, k)           一次 verify 期望产出的 token 数（注意 alpha=1 的特殊情况）
   - spec_decode_speedup(alpha, k, draft_cost, ...) 加速比
 
-峰值用讲义里的 3.35 TB/s 和 989 TFLOPS。
+峰值用讲义里 H100 的 3.35 TB/s 和 989 TFLOPS（B200 上也一样，答案是按这组数字算的）。
 
 做完之后想一想：
   - min_batch_for_compute_bound(4096) 为什么是 None？长上下文时 decode 的瓶颈是什么？
@@ -24,6 +24,9 @@
 """
 from common import check, check_equal, finish
 
+# 纸笔题统一用 H100 SXM 的峰值，测试答案按它算，不随你的卡变化。
+# B200 是 8e12 B/s、2250e12 FLOP/s（ridge ≈ 281 FLOP/B，和 H100 的 295 差不多）：
+# 做完后可以换成 B200 的数字再跑一遍表格看看结论变不变（检查会失败，正常）。
 PEAK_BW = 3.35e12      # B/s
 PEAK_BF16 = 989e12     # FLOP/s
 

@@ -6,7 +6,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, gbps, report
+from common import bench, check, gbps, gpu_spec, report
 
 
 @triton.jit
@@ -55,5 +55,5 @@ if __name__ == "__main__":
         for name, fn in [("triton", lambda: add(x, y)), ("torch", lambda: x + y)]:
             ms = bench(fn)
             rows.append(dict(n=n, impl=name, us=ms * 1e3, GBps=gbps(nbytes, ms)))
-    report(rows, "vector add 带宽（H100 HBM3 峰值约 3350 GB/s）")
+    report(rows, f"vector add 带宽（{gpu_spec().bw_note()}）")
     print("\n观察：n 小的时候带宽很低——数据太少，时间被 launch 开销（几微秒）主导。")

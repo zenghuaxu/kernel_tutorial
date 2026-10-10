@@ -1,6 +1,9 @@
 """练习 00-1：roofline 计算器（参考答案）"""
 from common import check, check_equal, finish
 
+# 纸笔题统一用 H100 SXM 的峰值，测试答案按它算，不随你的卡变化。
+# B200 是 8e12 B/s、2250e12 FLOP/s（ridge ≈ 281 FLOP/B，和 H100 的 295 差不多）：
+# 做完后可以换成 B200 的数字再跑一遍表格看看结论变不变（检查会失败，正常）。
 PEAK_BW = 3.35e12      # B/s
 PEAK_BF16 = 989e12     # FLOP/s
 

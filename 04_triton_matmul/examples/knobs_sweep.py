@@ -16,7 +16,7 @@ import triton
 sys.path.insert(0, str(Path(__file__).parent))
 from matmul_walkthrough import matmul_kernel  # noqa: E402
 
-from common import bench, report, tflops  # noqa: E402
+from common import bench, gpu_name, gpu_spec, report, tflops  # noqa: E402
 
 
 def run(a, b, c, BM, BN, BK, G, warps, stages):
@@ -57,7 +57,7 @@ if __name__ == "__main__":
                              smem_KB="-", TFLOPS=f"失败: {type(e).__name__}"))
     report(rows, f"{s}x{s}x{s} bf16")
     print("\n读表：stages=1 时 Tensor Core 要等 load；stages 越多越能把访存延迟藏起来，直到 shared memory 放不下。")
-    print("smem_KB ≈ stages × (BM×BK + BK×BN) × 2 字节；H100 每个 SM 最多 227 KB。")
+    print(f"smem_KB ≈ stages × (BM×BK + BK×BN) × 2 字节；{gpu_name()} 每个 block 最多 {gpu_spec().smem_per_block_kb} KB。")
 
     # GROUP_M：输出很"宽"（N 大）而 K 较小时最明显——朴素排序下同时在跑的 program 要读整行 B
     del a, b, c

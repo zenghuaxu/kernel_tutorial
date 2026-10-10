@@ -1,6 +1,6 @@
 """练习 10-3：FP8 (e4m3) GEMM + 行/列缩放
 
-H100 的 Tensor Core 跑 fp8 的峰值是 bf16 的 2 倍，DeepSeek-V3 等模型已经用 fp8 训练/推理。
+H100 / B200 的 Tensor Core 跑 fp8 的峰值都是 bf16 的 2 倍，DeepSeek-V3 等模型已经用 fp8 训练/推理。
 e4m3 只有 3 位尾数、最大值 448，所以必须配合**缩放**使用：
     x ≈ x8.float() * scale
 本练习用最常见的组合：激活 A 按行（per-token）缩放，权重 W 按输出通道（W 的每一行，per-channel）缩放：
@@ -12,17 +12,17 @@ e4m3 只有 3 位尾数、最大值 448，所以必须配合**缩放**使用：
      （在 fp32 里做除法；全零行别除以 0，scale 下限 clamp 到 1e-12）
   2. fp8_matmul_kernel：
      - K 循环：a_desc.load 得到 [BM, BK]；W 按 [N, K] 存，w_desc.load([pid_n * BN, ki * BK]) 得到 [BN, BK]，
-       乘的时候用 w.T。（Hopper 的 fp8 wgmma 要求两个操作数都是 "K 连续"，所以权重按 [N, K] 存最自然）
+       乘的时候用 w.T。（Hopper 的 fp8 wgmma 要求两个操作数都是 "K 连续"，所以权重按 [N, K] 存最自然；Blackwell 的 tcgen05 也偏好这种布局）
      - epilogue：load sa、sw（带 mask），乘到 acc 上，c_desc.store
 
 提示：
-  - fp8 的 wgmma 一次吃 K=32，BK 取 128 正好
+  - fp8 的 wgmma / tcgen05.mma 一次吃 K=32，BK 取 128 正好
   - tl.dot(a, w.T, acc)：.T 只是改变 shared memory 的读取方式，不会真的搬数据
 
 做完之后想一想：
   - 测试打印的"相对 bf16 原始矩阵乘的误差"约 3.7%。这个误差主要来自哪里？（3 位尾数的相对舍入误差 ≈ 2^-4 / √3 …）
     如果 A 的某一行里有一个特别大的离群值，per-row scale 会怎样？per-tensor scale 呢？（这就是 block-wise 缩放的动机）
-  - 你的 kernel 和 torch._scaled_mm 差多少？离 fp8 峰值 1979 还差多少？差在哪？（提示：单元 10 讲义 10.4）
+  - 你的 kernel 和 torch._scaled_mm 差多少？离 fp8 峰值（H100 ≈ 1979，B200 ≈ 4500 TFLOPS）还差多少？差在哪？（提示：单元 10 讲义 10.4）
 
 运行：python 10_hopper/exercises/ex3_fp8_matmul.py
 """
@@ -31,7 +31,7 @@ import triton
 import triton.language as tl
 from triton.tools.tensor_descriptor import TensorDescriptor
 
-from common import bench, check, check_equal, finish, report, tflops
+from common import bench, check, check_equal, finish, gpu_spec, report, tflops
 
 FP8_MAX = 448.0   # torch.finfo(torch.float8_e4m3fn).max
 
@@ -117,5 +117,5 @@ if __name__ == "__main__":
             a8, w8.T, scale_a=sa[:, None], scale_b=sw[None, :], out_dtype=torch.bfloat16)))),
         dict(impl="cuBLAS bf16", TFLOPS=tflops(f, bench(lambda: a @ w.T))),
     ]
-    report(rows, f"{S}^3（H100 dense 峰值：fp8 ≈ 1979，bf16 ≈ 989 TFLOPS）")
+    report(rows, f"{S}^3（{gpu_spec().mma_note()}）")
     finish()
