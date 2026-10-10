@@ -3,7 +3,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, check_equal, finish, report
+from common import bench, check, check_equal, finish, gpu_name, report
 
 
 # ----------------------------------------------------------------------------
@@ -135,5 +135,5 @@ if __name__ == "__main__":
                      ("torch eager", lambda t: cap * torch.tanh(t / cap))]:
         ms = bench(lambda: torch.autograd.grad(fn(x), x, dy))
         rows.append(dict(impl=name, us_fwd_bwd=ms * 1e3))
-    report(rows, "softcap 前向+反向 [8192, 8192] bf16（实测于共享 H100）")
+    report(rows, f"softcap 前向+反向 [8192, 8192] bf16（实测于 {gpu_name()}）")
     finish()

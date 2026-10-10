@@ -14,7 +14,7 @@ V 是 12.8 万（LLaMA-3）到 15 万（Qwen），一行 bf16 就有 ~250KB，�
 做完之后想一想：
   - eager 的 F.cross_entropy(logits.float(), ...) 慢了 10 倍（实测 ~1120us vs ~106us）。它额外分配了多少显存？
     T=8192（一个训练 micro-batch 常见的 token 数）时呢？
-  - 如果 T 很小（比如 decode 时 T=8），只有 8 个 program，132 个 SM 大部分闲着。怎么改？
+  - 如果 T 很小（比如 decode 时 T=8），只有 8 个 program，132 个（H100）/ 148 个（B200）SM 大部分闲着。怎么改？
     （提示：把一行拆给多个 program，各自算局部的 (m, s)，再用第二个小 kernel 合并——FlashDecoding 也是这个思路）
   - 反向传播 dlogits = softmax(logits) - onehot(target)。能不能在前向这个 kernel 里顺便算出来，直接覆盖 logits？
     （Liger Kernel 就是这么省显存的；单元 09 会做反向）

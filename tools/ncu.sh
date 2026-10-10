@@ -2,6 +2,7 @@
 # Nsight Compute 包装脚本。
 #
 #   tools/ncu.sh -k regex:my_kernel python 02_profiling/examples/copy_kernels.py
+#   gpu-run 3 -- tools/ncu.sh ...            # 共享机器上：先用 gpu-run 拿锁（它负责设置 CUDA_VISIBLE_DEVICES）
 #   tools/ncu.sh --set full -k regex:matmul -c 1 -o out/matmul python xxx.py   # 存成 .ncu-rep
 #   tools/ncu.sh -i out/matmul.ncu-rep --page details                         # 在终端里看报告
 #
@@ -9,7 +10,7 @@
 #   1. 这台机器 RmProfilingAdminOnly=1，读性能计数器必须 root -> 用 sudo 并保留环境变量
 #   2. 默认 ncu 会把 GPU 锁到 base clock（--clock-control base）。卡上有别人的训练任务，
 #      锁频会拖慢它们，所以这里默认 --clock-control none。代价：数字会随频率浮动。
-#   3. ncu 是从 sglang 容器里拷出来的（2025.3.1），不在系统 PATH 里。
+#   3. ncu 是 setup.sh 从 docker 容器里拷出来的（2025.3.1，支持 H100 / B200），不在系统 PATH 里。
 set -euo pipefail
 if [ -z "${KT_ROOT:-}" ]; then
   echo "先执行: source env.sh" >&2; exit 2
@@ -19,6 +20,9 @@ NCU="$KT_ROOT/.tools/nsight-compute/ncu"
 for a in "$@"; do
   if [ "$a" = "-i" ] || [ "$a" = "--import" ]; then exec "$NCU" "$@"; fi
 done
+if [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && command -v gpu-run >/dev/null; then
+  echo "共享机器上请用 gpu-run 拿锁: gpu-run <id> -- bash tools/ncu.sh $*" >&2; exit 2
+fi
 exec sudo -E env "PATH=$PATH" "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" "PYTHONPATH=${PYTHONPATH:-}" \
   "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}" \
   "TRITON_CACHE_DIR=$TRITON_CACHE_DIR" "TORCH_EXTENSIONS_DIR=$TORCH_EXTENSIONS_DIR" \

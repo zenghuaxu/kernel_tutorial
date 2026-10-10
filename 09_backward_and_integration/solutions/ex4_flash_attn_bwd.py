@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, report, tflops
+from common import bench, check, finish, gpu_name, report, tflops
 
 LOG2E = 1.4426950408889634
 
@@ -221,5 +221,5 @@ if __name__ == "__main__":
     for name, fn in [("ours (triton)", flash_attn), ("torch SDPA", F.scaled_dot_product_attention)]:
         ms = bench(lambda: torch.autograd.grad(fn(q, k, v), (q, k, v), do))
         rows.append(dict(impl=name, ms_fwd_bwd=ms, TFLOPs=tflops(flops, ms)))
-    report(rows, f"attention 前向+反向 B={B} H={H} N={N} D={D} bf16（实测于共享 H100）")
+    report(rows, f"attention 前向+反向 B={B} H={H} N={N} D={D} bf16（实测于 {gpu_name()}）")
     finish()

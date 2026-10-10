@@ -24,7 +24,7 @@
 """
 import torch
 
-from common import bench, check, finish, gbps, load_cuda, report
+from common import bench, check, finish, gbps, gpu_spec, load_cuda, report
 
 CUDA_SRC = r"""
 #include <ATen/cuda/CUDAContext.h>
@@ -91,5 +91,5 @@ if __name__ == "__main__":
                          ("float4", lambda: mod.axpb(x, 2.0, 1.0, True))]:
             ms = bench(fn)
             rows.append(dict(n=n, impl=name, us=ms * 1e3, GBps=gbps(2 * n * 4, ms)))
-    report(rows, "axpb fp32（H100 HBM3 峰值约 3350 GB/s）")
+    report(rows, f"axpb fp32（{gpu_spec().bw_note()}）")
     finish()

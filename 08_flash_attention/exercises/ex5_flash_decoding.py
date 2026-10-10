@@ -35,7 +35,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, gbps, report
+from common import bench, check, finish, gbps, gpu_name, report
 
 
 @triton.jit
@@ -158,7 +158,7 @@ if __name__ == "__main__":
         check(f"{tag} o", o, o_ref, atol=1e-2, rtol=1e-2)
         check(f"{tag} lse", lse, lse_ref, atol=1e-3, rtol=1e-3)
 
-    # 性能：B=1 时只有 H=32 个 (b, h) 对，不切分的话只有 32 个 program，132 个 SM 大部分闲着
+    # 性能：B=1 时只有 H=32 个 (b, h) 对，不切分的话只有 32 个 program，132（H100）/ 148（B200）个 SM 大部分闲着
     B, H, Hkv, N, D = 1, 32, 8, 32768, 128
     q = torch.randn(B, H, D, device="cuda", dtype=dt)
     kc = torch.randn(B, Hkv, N, D, device="cuda", dtype=dt)
@@ -172,5 +172,5 @@ if __name__ == "__main__":
     q4 = q[:, :, None, :]
     ms = bench(lambda: F.scaled_dot_product_attention(q4, kc, vc, enable_gqa=True))
     rows.append(dict(impl="torch SDPA", us=ms * 1e3, GBps=gbps(nbytes, ms)))
-    report(rows, f"decode B={B} H={H}/{Hkv} N={N} D={D} bf16（实测于共享 H100；GBps 以 KV cache 大小计）")
+    report(rows, f"decode B={B} H={H}/{Hkv} N={N} D={D} bf16（实测于 {gpu_name()}；GBps 以 KV cache 大小计）")
     finish()

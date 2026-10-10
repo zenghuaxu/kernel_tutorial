@@ -72,6 +72,7 @@ if __name__ == "__main__":
     print(f"{props.name}: {props.multi_processor_count} SMs, 每 SM 最多 {props.max_threads_per_multi_processor} 线程, "
           f"每 SM {props.regs_per_multiprocessor} 个寄存器, 每 block shared memory 上限(opt-in) {props.shared_memory_per_block_optin // 1024} KB")
 
+    max_warps = props.max_threads_per_multi_processor // 32   # H100 / B200 都是 64
     n = 1 << 26
     x = torch.randn(n, device="cuda")
     threads = 256
@@ -84,8 +85,8 @@ if __name__ == "__main__":
         assert torch.equal(out, x)
         ms = bench(lambda: mod.copy_with_smem(x, threads, smem))
         rows.append(dict(dyn_smem_KB=smem_kb, blocks_per_SM=blocks_per_sm, warps_per_SM=warps,
-                         occupancy=f"{warps / 64:.0%}", GBps=gbps(2 * n * 4, ms)))
-    report(rows, f"copy kernel, {threads} 线程/block, 每线程 1 个 float（H100 每 SM 最多 64 个 warp）")
+                         occupancy=f"{warps / max_warps:.0%}", GBps=gbps(2 * n * 4, ms)))
+    report(rows, f"copy kernel, {threads} 线程/block, 每线程 1 个 float（{props.name} 每 SM 最多 {max_warps} 个 warp）")
 
     blocks_per_sm, regs = mod.occupancy(threads, 0, True)
     print(f"\nheavy_regs_kernel：每线程 {regs} 个寄存器 → 每 SM 最多 {blocks_per_sm} 个 {threads} 线程的 block "

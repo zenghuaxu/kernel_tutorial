@@ -21,7 +21,8 @@ C[M,N](fp32) = A[M,K](bf16) @ B[K,N](bf16)，行主序；每个 warp 算 C 的�
 做完之后想一想：
   - 为什么 B 用 .trans？如果 B 在内存里本来就是列主序（[N, K] 行主序，比如 nn.Linear 的 weight），还需要 .trans 吗？
   - 一条 mma.sync.m16n8k16 是 16*8*16*2 = 4096 FLOP。H100 每个 SM 每周期能做多少？要多少个 warp 同时发 mma 才能喂饱？
-    （单元 10：Hopper 上 mma.sync 已经不是最快的路径了，wgmma 一次是 64xNx16，而且是异步的）
+    （单元 10：Hopper 上 mma.sync 已经不是最快的路径了，wgmma 一次是 64xNx16，而且是异步的；
+     Blackwell 上换成了 tcgen05.mma，单线程发射、累加器在 Tensor Memory 里）
 
 运行：python 07_cuda_gemm/exercises/ex4_mma_sync.py
 """

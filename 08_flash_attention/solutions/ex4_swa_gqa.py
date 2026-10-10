@@ -5,7 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, report, tflops
+from common import bench, check, finish, gpu_name, report, tflops
 
 
 @triton.jit
@@ -176,5 +176,5 @@ if __name__ == "__main__":
         # 有效 FLOPs：每个 (i, j) 对 4*D（QK^T 和 PV 各 2*D）
         pairs = sum(min(i + 1, W) if W > 0 else i + 1 for i in range(N))
         rows.append(dict(window=W if W else "causal", ms=ms, TFLOPs=tflops(4 * D * pairs * B * H, ms)))
-    report(rows, f"B={B} H={H}/{Hkv} N={N} D={D} bf16（实测于共享 H100，有噪声）")
+    report(rows, f"B={B} H={H}/{Hkv} N={N} D={D} bf16（实测于 {gpu_name()}，有噪声）")
     finish()

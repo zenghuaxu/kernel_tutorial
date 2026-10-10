@@ -5,7 +5,7 @@
 """
 import torch
 
-from common import bench, check, gbps, load_cuda, report
+from common import bench, check, gbps, gpu_spec, load_cuda, report
 
 CUDA_SRC = r"""
 #include <ATen/cuda/CUDAContext.h>   // at::cuda::getCurrentCUDAStream()
@@ -88,4 +88,4 @@ if __name__ == "__main__":
         for name, fn in [("cuda", lambda: mod.add(x, y)), ("torch", lambda: x + y)]:
             ms = bench(fn)
             rows.append(dict(n=n, impl=name, us=ms * 1e3, GBps=gbps(3 * n * 4, ms)))
-    report(rows, "vector add 带宽（H100 HBM3 峰值约 3350 GB/s）")
+    report(rows, f"vector add 带宽（{gpu_spec().bw_note()}）")

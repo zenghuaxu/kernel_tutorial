@@ -32,7 +32,7 @@ def time_cuda(fn, warmup: int = 10, rep: int = 50, flush_l2: bool = True) -> flo
     # TODO:
     #   1. 预热 warmup 次（第一次调用可能包含编译/加载）
     #   2. 计时 rep 次：每次用一对 torch.cuda.Event(enable_timing=True) 夹住 fn()
-    #      flush_l2=True 时，在每次计时开始前写一遍一个 256MB 的 buffer（比 50MB 的 L2 大）把 L2 挤掉
+    #      flush_l2=True 时，在每次计时开始前写一遍一个 256MB 的 buffer（比 H100 的 50MB / B200 的 126MB L2 都大）把 L2 挤掉
     #      （提示：buffer 只分配一次，放在模块级变量 _L2_FLUSH 里；清 L2 的那个 kernel 不能在两个 event 之间）
     #   3. torch.cuda.synchronize() 之后用 start.elapsed_time(end) 取毫秒数，返回平均值
     return None
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     rows.append(dict(case="slow first call", naive=float("nan"), mine=mine, do_bench=ref))
     check("首次调用被预热排除", mine, ref, atol=0, rtol=0.1)
 
-    # 3. 16MB copy：能放进 50MB 的 L2，不清 L2 会偏快
+    # 3. 16MB copy：能放进 L2（H100 50MB / B200 126MB），不清 L2 会偏快
     x = torch.randn(4 * 1024 * 1024, device="cuda")
     y = torch.empty_like(x)
     copy = lambda: y.copy_(x)

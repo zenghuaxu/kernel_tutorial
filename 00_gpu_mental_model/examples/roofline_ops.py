@@ -8,10 +8,13 @@ roofline 下界时间 = max(FLOPs / 峰值算力, bytes / 峰值带宽)
 import torch
 import torch.nn.functional as F
 
-from common import bench, report
+from common import bench, gpu_spec, report
 
-PEAK_BW = 3.35e12        # B/s，H100 SXM HBM3
-PEAK_BF16 = 989e12       # FLOP/s，bf16 dense Tensor Core
+# 峰值按当前这张卡查表（H100 SXM: 3.35 TB/s、989 TFLOPS；B200: 8 TB/s、2250 TFLOPS）
+# 表里没有的卡退回 H100 的数字
+SPEC = gpu_spec()
+PEAK_BW = SPEC.peak_bw or 3.35e12        # B/s，HBM
+PEAK_BF16 = SPEC.peak_bf16 or 989e12     # FLOP/s，bf16 dense Tensor Core
 RIDGE = PEAK_BF16 / PEAK_BW
 
 if __name__ == "__main__":
@@ -45,7 +48,7 @@ if __name__ == "__main__":
         t_bound = max(flops / PEAK_BF16, nbytes / PEAK_BW) * 1e3  # ms
         rows.append(dict(op=name, AI=ai, bound="compute" if ai > RIDGE else "memory",
                          roofline_us=t_bound * 1e3, measured_us=ms * 1e3, pct_of_roofline=100 * t_bound / ms))
-    report(rows, f"roofline（ridge point = {RIDGE:.0f} FLOP/B）")
+    report(rows, f"{SPEC.name} roofline（ridge point = {RIDGE:.0f} FLOP/B）")
     print("""
 怎么读这张表：
   - AI 远小于 ridge 的都是 memory-bound：优化目标是"少搬字节"（融合、低精度），而不是"少算"。

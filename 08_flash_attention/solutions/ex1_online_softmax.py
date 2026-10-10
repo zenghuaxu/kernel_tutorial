@@ -3,7 +3,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, gbps, report
+from common import bench, check, finish, gbps, gpu_name, report
 
 
 @triton.jit
@@ -70,5 +70,5 @@ if __name__ == "__main__":
     ]:
         ms = bench(fn)
         rows.append(dict(impl=name, us=ms * 1e3, GBps=gbps(nbytes, ms)))
-    report(rows, f"softmax M={M} N={N} bf16（实测于共享 H100）")
+    report(rows, f"softmax M={M} N={N} bf16（实测于 {gpu_name()}）")
     finish()

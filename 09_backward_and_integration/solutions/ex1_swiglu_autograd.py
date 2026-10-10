@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import triton
 import triton.language as tl
 
-from common import bench, check, check_equal, finish, report
+from common import bench, check, check_equal, finish, gpu_name, report
 
 
 @triton.jit
@@ -133,5 +133,5 @@ if __name__ == "__main__":
     for name, fn in [("triton autograd.Function", swiglu), ("torch eager", ref_swiglu)]:
         ms = bench(lambda: torch.autograd.grad(fn(g, u), (g, u), dout))
         rows.append(dict(impl=name, us_fwd_bwd=ms * 1e3))
-    report(rows, f"SwiGLU 前向+反向 {shape} bf16（实测于共享 H100）")
+    report(rows, f"SwiGLU 前向+反向 {shape} bf16（实测于 {gpu_name()}）")
     finish()

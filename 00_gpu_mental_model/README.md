@@ -19,32 +19,36 @@ GPU 算一次乘加只要零点几纳秒，但从 HBM 搬一个字节的"摊销�
 这三个 kernel 一共读写了 6 份 64MB 的数据，真正需要的只有"读 x、写 y"两份——
 **写一个融合 kernel 能快 ~3 倍，而一个计算都没省**。这就是大部分自定义 kernel 的价值来源。
 
-## 0.2 H100 SXM 的关键数字
+## 0.2 H100 SXM / B200 的关键数字
 
-| 资源 | 数值 | 备注 |
-|---|---|---|
-| SM（流式多处理器） | **132** 个 | 一个 thread block 只能在一个 SM 上跑 |
-| 每 SM：线程上限 | 2048 线程 = 64 warps | warp = 32 个线程，GPU 调度的基本单位 |
-| 每 SM：寄存器 | 64K 个 32-bit（256 KB） | 每线程最多 255 个；用得越多，同时驻留的线程越少 |
-| 每 SM：shared memory | 最多 228 KB（每 block 最多 227 KB） | 和 L1 共用 256 KB 的 SRAM，程序员可控的"手动 cache" |
-| L2 cache | 50 MB | 所有 SM 共享 |
-| HBM3 显存 | 80 GB，**3.35 TB/s** | |
-| BF16/FP16 Tensor Core | **989 TFLOPS**（dense） | 只有矩阵乘能用 |
-| FP8 Tensor Core | 1979 TFLOPS | |
-| TF32 Tensor Core | 495 TFLOPS | |
-| FP32 普通 CUDA core | 67 TFLOPS | elementwise、归约走这里 |
-| 一次 kernel launch | ~3–5 μs | 从 CPU 发起到 GPU 开始执行 |
+讲义里的例子和估算默认用 H100 的数字；在 B200 上学的话对照右列（代码里用 `common.gpu_spec()` 自动取当前卡的值）。
 
-**本机实测**（`examples/device_info.py`，卡上同时有训练任务，偏保守）：
-
-| 测试 | 实测 | 峰值 | 比例 |
+| 资源 | H100 SXM (sm_90) | B200 (sm_100) | 备注 |
 |---|---|---|---|
-| copy 1 GiB fp32 | 2996 GB/s | 3350 GB/s | 89% |
-| bf16 GEMM 8192³ | 760 TFLOPS | 989 TFLOPS | 77% |
-| fp32 GEMM 4096³（关 TF32） | 51 TFLOPS | 67 TFLOPS | 76% |
-| 空 kernel | 5.1 μs | — | — |
+| SM（流式多处理器） | **132** 个 | **148** 个 | 一个 thread block 只能在一个 SM 上跑 |
+| 每 SM：线程上限 | 2048 线程 = 64 warps | 同左 | warp = 32 个线程，GPU 调度的基本单位 |
+| 每 SM：寄存器 | 64K 个 32-bit（256 KB） | 同左 | 每线程最多 255 个；用得越多，同时驻留的线程越少 |
+| 每 SM：shared memory | 最多 228 KB（每 block 最多 227 KB） | 同左 | 和 L1 共用 256 KB 的 SRAM，程序员可控的"手动 cache" |
+| 每 SM：Tensor Memory | — | 256 KB | Blackwell 新增，专门放 MMA 累加器（单元 10.8） |
+| L2 cache | 50 MB | 126 MB | 所有 SM 共享 |
+| HBM 显存 | 80 GB HBM3，**3.35 TB/s** | ~180 GB HBM3e，**8 TB/s** | |
+| BF16/FP16 Tensor Core | **989 TFLOPS**（dense） | **2250 TFLOPS** | 只有矩阵乘能用 |
+| FP8 Tensor Core | 1979 TFLOPS | 4500 TFLOPS（另有 FP4 9000） | |
+| TF32 Tensor Core | 495 TFLOPS | 1100 TFLOPS | |
+| FP32 普通 CUDA core | 67 TFLOPS | 75 TFLOPS | elementwise、归约走这里 |
+| 一次 kernel launch | ~3–5 μs | 同左 | 从 CPU 发起到 GPU 开始执行 |
 
-经验：带宽能跑到峰值的 ~90%，Tensor Core 能跑到 ~75–80%，这就是"实际天花板"。
+**本机实测**（`examples/device_info.py`；H100 那次卡上同时有训练任务，偏保守）：
+
+| 测试 | H100 实测 / 峰值 | 比例 | B200 实测 / 峰值 | 比例 |
+|---|---|---|---|---|
+| copy 1 GiB fp32 | 2996 / 3350 GB/s | 89% | 6414 / 8000 GB/s | 80% |
+| bf16 GEMM 8192³ | 760 / 989 TFLOPS | 77% | 1545 / 2250 TFLOPS | 69% |
+| fp32 GEMM 4096³（关 TF32） | 51 / 67 TFLOPS | 76% | 63 / 75 TFLOPS | 84% |
+| 空 kernel | 5.1 μs | — | 6.1 μs | — |
+
+经验：带宽能跑到峰值的 ~80–90%，Tensor Core 能跑到 ~70–80%，这就是"实际天花板"。
+注意 B200 的算力和带宽都比 H100 翻了一倍多，但 fp32 CUDA core 几乎没涨——不走 Tensor Core 的代码在新卡上收益很小。
 
 ## 0.3 执行模型：grid → block → warp → thread
 
@@ -89,8 +93,8 @@ t ≥ max( FLOPs / 峰值算力 ,  bytes / 峰值带宽 )
 ```
 
 两项相等时的 AI 叫 **ridge point**：
-- bf16 Tensor Core：989e12 / 3.35e12 ≈ **295 FLOP/B**
-- fp32 CUDA core：67e12 / 3.35e12 ≈ **20 FLOP/B**
+- bf16 Tensor Core：989e12 / 3.35e12 ≈ **295 FLOP/B**（B200：2250e12 / 8e12 ≈ 281）
+- fp32 CUDA core：67e12 / 3.35e12 ≈ **20 FLOP/B**（B200：75e12 / 8e12 ≈ 9）
 
 AI 低于 ridge 的算子是 **memory-bound**（瓶颈是带宽），高于的是 **compute-bound**。
 

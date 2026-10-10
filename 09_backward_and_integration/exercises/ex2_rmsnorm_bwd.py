@@ -28,7 +28,7 @@ import torch
 import triton
 import triton.language as tl
 
-from common import bench, check, finish, report
+from common import bench, check, finish, gpu_name, report
 
 NUM_SMS = torch.cuda.get_device_properties(0).multi_processor_count
 
@@ -145,5 +145,5 @@ if __name__ == "__main__":
         wr = w.detach().requires_grad_()
         ms = bench(lambda: torch.autograd.grad(fn(xr, wr), (xr, wr), dy))
         rows.append(dict(impl=name, us_fwd_bwd=ms * 1e3))
-    report(rows, "RMSNorm 前向+反向 [16384, 4096] bf16（实测于共享 H100）")
+    report(rows, f"RMSNorm 前向+反向 [16384, 4096] bf16（实测于 {gpu_name()}）")
     finish()
