@@ -39,7 +39,22 @@ def matmul_kernel(
     #   2. A tile 和 B tile 的初始指针
     #   3. fp32 累加器 + 沿 K 的循环（带 mask 的 load、tl.dot、指针前移）
     #   4. 转 dtype、带 mask 写回 C
-    pass
+    m_id = tl.program_id(0)
+    n_id = tl.program_id(1)
+    a_offs_m = m_id * BLOCK_M + tl.arange(0, BLOCK_M)
+    b_offs_n = n_id * BLOCK_N + tl.arange(0, BLOCK_N)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for i in range(0, K, BLOCK_K):
+        a_tile = tl.load(a_ptr + a_offs_m[:, None] * stride_am + (tl.arange(0, BLOCK_K)[None, :] + i) * stride_ak,
+                    mask=(a_offs_m[:, None] < M) & (tl.arange(0, BLOCK_K)[None, :] + i < K), other=0)
+        b_tile = tl.load(b_ptr + b_offs_n[None, :] * stride_bn + (tl.arange(0, BLOCK_K)[:, None] + i) * stride_bk,
+                    mask=(b_offs_n[None, :] < N) & (tl.arange(0, BLOCK_K)[:, None] + i < K), other=0)
+
+        acc = tl.dot(a_tile, b_tile, acc)
+
+    tl.store(c_ptr + a_offs_m[:, None] * stride_cm + b_offs_n[None, :] * stride_cn, acc,
+             mask=(a_offs_m[:, None] < M) & (b_offs_n[None, :] < N))
 
 
 def matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

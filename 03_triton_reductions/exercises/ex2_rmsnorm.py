@@ -29,7 +29,15 @@ def rmsnorm_kernel(x_ptr, w_ptr, out_ptr, N, stride_x, stride_out, eps, BLOCK: t
     #   1. load 这一行（转 fp32），越界填 0
     #   2. 均方 ms = sum(x*x) / N（注意分母是 N 不是 BLOCK），rstd = rsqrt(ms + eps)
     #   3. load 权重 w，y = x * rstd * w，转回输出 dtype 存回去
-    pass
+    m = tl.program_id(0)
+    x_offs = m * stride_x + tl.arange(0, BLOCK)
+    x_mask = tl.arange(0, BLOCK) < N
+    x = tl.load(x_ptr + x_offs, x_mask, other=0).to(tl.float32)
+    w = tl.load(w_ptr + tl.arange(0, BLOCK), x_mask).to(tl.float32)
+    x_sqrt = tl.sqrt(tl.sum(x * x) / N + eps)
+
+    out_offs = m * stride_out + tl.arange(0, BLOCK)
+    tl.store(out_ptr + out_offs, (x / x_sqrt * w).to(out_ptr.dtype.element_ty), x_mask)
 
 def rmsnorm(x: torch.Tensor, w: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     assert x.shape[-1] == w.shape[0] and x.stride(-1) == 1

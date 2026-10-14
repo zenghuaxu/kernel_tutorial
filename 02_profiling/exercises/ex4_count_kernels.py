@@ -40,7 +40,21 @@ def gpu_kernels(fn) -> list[str]:
     #   3. 从 prof.events() 里挑出 GPU 上的事件（e.device_type == torch.autograd.DeviceType.CUDA），
     #      去掉 e.is_user_annotation 为真的（record_function 区间），以及名字以 "Memcpy"/"Memset" 开头的
     #   4. 按开始时间（e.time_range.start）排序，返回名字列表
-    return []
+    fn()
+    torch.cuda.synchronize()
+
+    event_list = []
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        fn()
+        torch.cuda.synchronize()
+
+    for e in prof.events():
+        if e.is_user_annotation or e.name.startswith(("Memcpy", "Memset")):
+            continue
+        if e.device_type == torch.autograd.DeviceType.CUDA:
+            event_list.append(e)
+
+    return [e.name for e in sorted(event_list, key=lambda x: x.time_range.start)]
 
 
 @triton.jit

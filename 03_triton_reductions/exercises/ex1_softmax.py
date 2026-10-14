@@ -30,7 +30,16 @@ def softmax_kernel(x_ptr, out_ptr, N, stride_x, stride_out, BLOCK: tl.constexpr)
     #   1. load 这一行（越界位置填什么值，才能既不影响 max 也不影响 sum？），转 fp32
     #   2. 减去行最大值再 exp（数值稳定），求和，相除
     #   3. 转回输出 dtype 并 store
-    pass
+    m = tl.program_id(0)
+    off_n = m * stride_x + tl.arange(0, BLOCK)
+    mask = tl.arange(0, BLOCK) < N
+    x = tl.load(x_ptr + off_n, mask=mask, other=float("-inf")).to(tl.float32)
+    max_x = tl.max(x, axis=0)
+    exp_x = tl.exp(x - max_x)
+    exp_sum = tl.sum(exp_x, axis=0)
+
+    out_off_n = m * stride_out + tl.arange(0, BLOCK)
+    tl.store(out_ptr + out_off_n, (exp_x / exp_sum).to(out_ptr.dtype.element_ty), mask=mask)
 
 def softmax(x: torch.Tensor) -> torch.Tensor:
     """对最后一维做 softmax。x: [..., N]，最后一维连续。"""
@@ -38,7 +47,7 @@ def softmax(x: torch.Tensor) -> torch.Tensor:
     x2 = x.reshape(-1, x.shape[-1])
     M, N = x2.shape
     out = torch.empty_like(x2)
-    BLOCK = None  # TODO: BLOCK 必须是 2 的幂，且能一次装下整行
+    BLOCK = triton.next_power_of_2(N) # TODO: BLOCK 必须是 2 的幂，且能一次装下整行
     num_warps = 4 if BLOCK <= 2048 else (8 if BLOCK <= 8192 else 16)
     softmax_kernel[(M,)](x2, out, N, x2.stride(0), out.stride(0), BLOCK=BLOCK, num_warps=num_warps)
     return out.view_as(x)
