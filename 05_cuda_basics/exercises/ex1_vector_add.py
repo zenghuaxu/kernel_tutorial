@@ -25,6 +25,10 @@ CUDA_SRC = r"""
 
 __global__ void add_kernel(const float* __restrict__ x, const float* __restrict__ y,
                            float* __restrict__ out, int64_t n) {
+    int idx = blockDim.x * blockIdx.x + threadIdx.x;
+    if (idx < n) {
+      out[idx] = x[idx] + y[idx];
+    }
     // TODO: 算出全局下标 i，越界保护，写 out[i]
 }
 
@@ -36,7 +40,7 @@ torch::Tensor add(torch::Tensor x, torch::Tensor y) {
     int64_t n = x.numel();
     if (n == 0) return out;
     const int threads = 256;
-    int64_t blocks = 0;  // TODO: 需要多少个 block？
+    int64_t blocks = (n + threads - 1) / threads;  // TODO: 需要多少个 block？
     TORCH_CHECK(blocks > 0, "blocks 还没算（TODO）");
     add_kernel<<<blocks, threads, 0, at::cuda::getCurrentCUDAStream()>>>(
         x.data_ptr<float>(), y.data_ptr<float>(), out.data_ptr<float>(), n);

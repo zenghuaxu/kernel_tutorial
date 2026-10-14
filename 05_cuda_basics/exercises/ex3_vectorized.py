@@ -45,6 +45,21 @@ __global__ void axpb_vec4_kernel(const float* __restrict__ x, float* __restrict_
     // TODO:
     //   1. grid-stride 循环：把 x / out 当作 float4 数组，处理前 n/4 个 float4
     //   2. 尾巴：最后 n % 4 个元素逐个处理（只需要前 n % 4 个线程干活）
+    int64_t idx = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
+
+    const float4 *float4_x = reinterpret_cast<const float4*>(x);
+    float4 *float4_out = reinterpret_cast<float4*>(out);
+
+    int64_t stride = (int64_t)gridDim.x * blockDim.x;
+
+    for (int i = idx; i < n / 4; i += stride) {
+        float4 input = float4_x[i];
+        float4_out[i] = (float4){input.x * alpha + beta, input.y * alpha + beta, input.z * alpha + beta, input.w * alpha + beta};
+    }
+
+    if (idx < n % 4) {
+        out[n / 4 * 4 + idx] = x[n / 4 * 4 + idx] * alpha + beta;
+    }
 }
 
 torch::Tensor axpb(torch::Tensor x, double alpha, double beta, bool vectorized) {

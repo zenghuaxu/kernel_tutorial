@@ -27,7 +27,12 @@ CUDA_SRC = r"""
 // 线程映射：threadIdx.x -> 列 j（内存连续的方向），threadIdx.y -> 行 i
 __global__ void bias_scale_kernel(const float* __restrict__ x, const float* __restrict__ bias,
                                   float* __restrict__ out, int M, int N, float scale) {
-    // TODO
+    int i = blockDim.x * blockIdx.x + threadIdx.x;
+    int j = blockDim.y * blockIdx.y + threadIdx.y;
+    if (i < N && j < M) {
+        int64_t idx = (int64_t)j * N + i;
+        out[idx] = x[idx] * scale + bias[i];
+    }
 }
 
 // 对照组（已写好）：把映射反过来，threadIdx.x -> 行 i。结果一样，但……跑一下看看带宽。
@@ -47,7 +52,7 @@ torch::Tensor bias_scale(torch::Tensor x, torch::Tensor bias, double scale) {
     int M = x.size(0), N = x.size(1);
     auto out = torch::empty_like(x);
     dim3 block(32, 8);                                   // 256 个线程：x 方向 32，y 方向 8
-    dim3 grid(0, 0);  // TODO
+    dim3 grid((N + 31) / 32, (M + 7) / 8);
     TORCH_CHECK(grid.x > 0 && grid.y > 0, "grid 还没算（TODO）");
     bias_scale_kernel<<<grid, block, 0, at::cuda::getCurrentCUDAStream()>>>(
         x.data_ptr<float>(), bias.data_ptr<float>(), out.data_ptr<float>(), M, N, (float)scale);
