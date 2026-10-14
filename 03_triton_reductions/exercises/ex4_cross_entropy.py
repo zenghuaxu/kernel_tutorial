@@ -42,7 +42,27 @@ def cross_entropy_kernel(
     #        for start in range(0, V, BLOCK): 读一块 x（越界填 -inf，转 fp32）
     #            m_new = max(m, max(x));  s = s * exp(m - m_new) + sum(exp(x - m_new));  m = m_new
     #   4. lse = m + log(s)；loss = lse - logits[row, target]
-    pass
+    token = tl.program_id(0)
+    target = tl.load(target_ptr + token)
+    if target == ignore_index:
+        tl.store(loss_ptr + token, 0)
+        return
+
+    logits_offs = token * stride_row.to(tl.int64) + tl.arange(0, BLOCK)
+    m_max = float("-inf")
+    s_global = 0.0
+    target_logit = tl.load(logits_ptr + token * stride_row.to(tl.int64) + target).to(tl.float32)
+
+    for i in range(0, V, BLOCK):
+        logits = tl.load(logits_ptr + logits_offs, i + tl.arange(0, BLOCK) < V, other=float("-inf")).to(tl.float32)
+        local_m_max = tl.max(logits)
+
+        s_global = s_global * tl.exp(m_max - max(local_m_max, m_max)) + tl.sum(tl.exp(logits - max(local_m_max, m_max)))
+        m_max = max(local_m_max, m_max)
+
+        logits_offs += BLOCK
+
+    tl.store(loss_ptr + token, m_max - target_logit + tl.log(s_global))
 
 def cross_entropy(logits: torch.Tensor, target: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
     """逐行的 loss（reduction='none'），fp32。logits: [T, V]，target: [T] int64。"""

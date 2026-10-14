@@ -37,19 +37,25 @@ from common import bench, check, check_equal, finish, report, tflops
 @triton.jit
 def grouped_pid(pid, num_pid_m, num_pid_n, GROUP_M: tl.constexpr):
     """把一维 pid 映射成 (pid_m, pid_n)：每 GROUP_M 行 tile 为一组，组内按列优先遍历。"""
-    # TODO: 算出 pid_m, pid_n
-    pid_m = 0
-    pid_n = 0
+    m_group_id = pid // (num_pid_n * GROUP_M)
+    m_group_offset = pid % (num_pid_n * GROUP_M)
+
+    curr_group_m = GROUP_M if (m_group_id + 1) * GROUP_M <= num_pid_m else num_pid_m % GROUP_M
+    pid_m = m_group_id * GROUP_M + m_group_offset % curr_group_m
+    pid_n = m_group_offset // curr_group_m
     return pid_m, pid_n
 
 
 # ---------------------------------------------------------------- 第 2 部分：autotune
 CONFIGS = [
-    # TODO: 3~4 个 triton.Config
+   triton.Config({"BLOCK_M": 128, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8}, num_warps=8, num_stages=4),
+   triton.Config({"BLOCK_M": 64, "BLOCK_N": 256, "BLOCK_K": 64, "GROUP_M": 8}, num_warps=8, num_stages=4),
+   triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 32, "GROUP_M": 4}, num_warps=8, num_stages=4),
+   triton.Config({"BLOCK_M": 64, "BLOCK_N": 128, "BLOCK_K": 16, "GROUP_M": 4}, num_warps=8, num_stages=4)
 ]
 
 
-@triton.autotune(configs=CONFIGS, key=[])  # TODO: key
+@triton.autotune(configs=CONFIGS, key=["M", "N", "K"])  # TODO: key
 @triton.jit
 def matmul_kernel(
     a_ptr, b_ptr, c_ptr, M, N, K,

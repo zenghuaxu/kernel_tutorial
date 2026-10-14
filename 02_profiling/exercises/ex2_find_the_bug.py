@@ -37,9 +37,9 @@ def scale_bias_kernel(
     pid_n = tl.program_id(1)
     offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offs_m[:, None] < M
-    x = tl.load(x_ptr + offs_m[:, None] * stride_xm + offs_n[None, :] * stride_xm, mask=mask)
-    s = tl.load(scale_ptr + offs_n, mask=offs_n < N)
+    mask = (offs_m[:, None] < M) &(offs_n[None, :] < N)
+    x = tl.load(x_ptr + offs_m[:, None] * stride_xm + offs_n[None, :] * stride_xn, mask=mask)
+    s = tl.load(scale_ptr + offs_m, mask=offs_m < M)
     b = tl.load(bias_ptr + offs_n, mask=offs_n < N)
     out = x * s[:, None] + b[None, :]
     tl.store(out_ptr + offs_m[:, None] * stride_om + offs_n[None, :] * stride_on, out, mask=mask)

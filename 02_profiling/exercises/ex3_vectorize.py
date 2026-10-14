@@ -29,6 +29,42 @@ from common import bench, check, check_equal, finish, gbps, report
 
 
 # ---------------- 第 1 部分：从 PTX 里读出 global load 的最大位宽 ----------------
+# ======================== Python re（正则）速查 ========================
+# PTX 里要找的行长这样（前面可能有谓词 @%p1）：
+#     @%p1 ld.global.v4.b32 { %r1, %r2, %r3, %r4 }, [ %rd1 + 0 ];
+#          ld.global.b16 { %rs1 }, [ %rd2 + 0 ];
+#
+# 1. 写法：正则字符串前面加 r（r"..."），反斜杠就不会被 Python 自己吃掉
+#
+# 2. 常用元素
+#     .        任意一个字符           \.      真正的点号（PTX 里的 . 都要写成 \.）
+#     \w       字母/数字/下划线       \d      数字 0-9
+#     \b       单词边界（不占字符），\bld 保证 ld 前面不是字母，排除 "xld" 这种
+#     [\w:]    方括号是字符集：\w 或 : 中的任意一个
+#     +  *  ?  重复：至少 1 次 / 0 次或多次 / 0 次或 1 次
+#     ( ... )  分组：可以整体重复，也可以事后用 m.group(i) 取出来
+#     |        或：  (b|f|u|s)  匹配 b、f、u、s 之一
+#
+# 3. 拆开看提示里的 r"\bld\.global(\.[\w:]+)*"
+#     \bld\.global     字面量 "ld.global"
+#     (\.[\w:]+)*      若干个 ".xxx" 后缀，例如 ".v4" ".b32" ".L1::evict_last"
+#     → 对上面第一行，m.group(0) == "ld.global.v4.b32"（整个匹配到的文本）
+#
+# 4. 常用函数
+#     m = re.search(pat, s)    在 s 里找第一个匹配；找不到返回 None，所以要先 if m:
+#     m.group(0)               整段匹配到的文本；m.group(1) 是第 1 个括号里的内容
+#     re.findall(pat, s)       返回所有匹配；pat 里有 1 个括号时，返回的是括号里的内容列表
+#
+#     例子：
+#     re.search(r"\.v(\d+)", ".v4.b32").group(1)     -> "4"     （找向量宽度）
+#     re.search(r"\.[bfus](\d+)", ".v4.b32").group(1) -> "32"    （找元素位数）
+#     int("32")                                        -> 32
+#
+# 5. 思路：先用提示里的 pattern 抓出整条 "ld.global...."，
+#    再在这段文本上用 4 里的两个小正则分别取 vN（没有就当 1）和 bN/fN/uN/sN 的位数，相乘取 max
+#    注意：compiled.asm["ptx"] 是一整个字符串，for 它会一个字符一个字符地遍历，
+#          要按行遍历用 .splitlines()
+# ======================================================================
 def load_width_bits(compiled) -> int:
     """返回 kernel 里所有 ld.global 指令中，单条指令读取的最大位数。
 
@@ -37,7 +73,20 @@ def load_width_bits(compiled) -> int:
     # TODO: 遍历 compiled.asm["ptx"] 的每一行，找出 ld.global 指令，
     #       从后缀里解析向量宽度（.v2 / .v4，没有就是 1）和元素位数（.b16 / .b32 / .f32 / .u8 ...），
     #       返回 max(向量宽度 * 位数)。提示：re.search(r"\bld\.global(\.[\w:]+)*", line)
-    return 0
+    max_bits = 0 
+    for line in compiled.asm['ptx'].splitlines():
+        m = re.search(r'\bld\.global(\.[\w:]+)*', line)
+        if m is None:
+            continue
+        inst = m.group(0)
+        v = re.search(r'\.v(\d+)', inst)
+        vec = int(v.group(1)) if v else 1
+        b = re.search(r'\.[bfus](\d+)', inst)
+        bits = int(b.group(1))
+        width = vec * bits
+        max_bits = max(max_bits, width)
+
+    return max_bits
 
 
 @triton.jit
@@ -52,6 +101,8 @@ def copy_kernel(x_ptr, out_ptr, n, BLOCK: tl.constexpr):
 def row_scale_kernel(x_ptr, s_ptr, out_ptr, N, stride, BLOCK: tl.constexpr):
     """out[r, :N] = x[r, :N] * s[r]，一个 program 处理一行。"""
     row = tl.program_id(0)
+    N = N // 8 * 8
+    stride = stride // 8 * 8
     # TODO: 现在 N=1000 时这里的 load 是 ld.global.b16（一次一个 bf16）。
     #       wrapper 保证了 N 和 stride 都是 8 的倍数，想办法把这个事实告诉编译器（见讲义 2.4 节），
     #       让 load 变成 128-bit（一次 8 个 bf16）。只加代码，不要改下面的计算逻辑。

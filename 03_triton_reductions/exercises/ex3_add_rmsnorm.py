@@ -34,7 +34,21 @@ def add_rmsnorm_kernel(
     #   1. load x 和 residual 的这一行（fp32），h = x + residual
     #   2. 把 h 存到 res_out（新的残差流，下一层还要用）
     #   3. 对 h 做 RMSNorm（同练习 2），结果存到 out
-    pass
+    m = tl.program_id(0)
+    x_offs = stride_x * m + tl.arange(0, BLOCK)
+    x = tl.load(x_ptr + x_offs, tl.arange(0, BLOCK) < N, other=0).to(tl.float32)
+    res_offs = stride_res * m + tl.arange(0, BLOCK)
+    res = tl.load(res_ptr + res_offs, tl.arange(0, BLOCK) < N, other=0).to(tl.float32)
+    h = x + res
+
+    res_out_offs = stride_res_out * m + tl.arange(0, BLOCK)
+    tl.store(res_out_ptr + res_out_offs, h.to(res_out_ptr.dtype.element_ty), tl.arange(0, BLOCK) < N)
+
+    w = tl.load(w_ptr + tl.arange(0, BLOCK), tl.arange(0, BLOCK) < N).to(tl.float32)
+    out = h / tl.sqrt(tl.sum(h * h) / N + eps) * w
+
+    out_offs = stride_out * m + tl.arange(0, BLOCK)
+    tl.store(out_ptr + out_offs, out, tl.arange(0, BLOCK) < N)
 
 def add_rmsnorm(x: torch.Tensor, residual: torch.Tensor, w: torch.Tensor, eps: float = 1e-6):
     """返回 (rmsnorm(x + residual) * w, x + residual)。"""
