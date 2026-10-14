@@ -54,7 +54,25 @@ def matmul_splitk_kernel(
     #   2. A、B tile 的初始指针（注意 K 方向从 k_start 开始）
     #   3. 本段内的 K 循环（mask 以 k_end 为界）
     #   4. tl.atomic_add 写回 fp32 的 c
-    pass
+    k_start = pid_k * K_PER_SPLIT
+    k_end = min((pid_k + 1) * K_PER_SPLIT, K)
+
+    m_offs = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    k_offs = k_start + tl.arange(0, BLOCK_K)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    for _ in range(k_start, k_end, BLOCK_K):
+        a_tile = tl.load(a_ptr + m_offs[:, None] * stride_am + k_offs[None, :] * stride_ak,
+                    mask=(m_offs[:, None] < M) & (k_offs[None, :] < k_end), other=0)
+        b_tile = tl.load(b_ptr + k_offs[:, None] * stride_bk + n_offs[None, :] * stride_bn,
+                    mask=(k_offs[:, None] < K) & (n_offs[None:, ] < k_end), other=0)
+
+        acc = tl.dot(a_tile, b_tile, acc)
+        k_offs += BLOCK_K
+
+    tl.atomic_add(c_ptr + m_offs[:, None] * stride_cm + n_offs[None, :] * stride_cn,
+                acc, mask=(m_offs[:, None] < M) & (n_offs[None, :] < N))
 
 
 def matmul_splitk(a: torch.Tensor, b: torch.Tensor, split_k: int) -> torch.Tensor:
@@ -63,8 +81,8 @@ def matmul_splitk(a: torch.Tensor, b: torch.Tensor, split_k: int) -> torch.Tenso
     N = b.shape[1]
     BM, BN, BK = 64, 64, 64
     c = torch.zeros((M, N), device=a.device, dtype=torch.float32)
-    k_per_split = None  # TODO: 每段的长度，BK 的整数倍
-    grid = (triton.cdiv(M, BM) * triton.cdiv(N, BN), None)  # TODO: 第二维 = 实际需要几段
+    k_per_split = triton.cdiv(triton.cdiv(K, split_k), BK) * BK
+    grid = (triton.cdiv(M, BM) * triton.cdiv(N, BN), triton.cdiv(K, k_per_split))  # TODO: 第二维 = 实际需要几段
     matmul_splitk_kernel[grid](
         a, b, c, M, N, K, k_per_split,
         a.stride(0), a.stride(1), b.stride(0), b.stride(1), c.stride(0), c.stride(1),
