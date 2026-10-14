@@ -75,7 +75,16 @@ def linear_act_kernel(
 
     # ---------------- epilogue：累加器还在寄存器里，顺手做完 bias + 激活 + cast ----------------
     # TODO: bias（HAS_BIAS 时）、激活（按 ACTIVATION）、cast、带 mask 写回 y
-    pass
+    if HAS_BIAS:
+        bias = tl.load(bias_ptr + offs_n, mask=offs_n < N, other=0).to(tl.float32)
+        acc += bias
+    if ACTIVATION == 'silu':
+        acc = acc / (1 + tl.exp(-acc))
+    elif ACTIVATION == 'gelu_tanh':
+        acc = _gelu_tanh(acc)
+
+    tl.store(y_ptr + offs_m[:, None] * stride_ym + offs_n[None, :] * stride_yn,
+             acc, mask=(offs_m[:, None] < M) & (offs_n[None:, ] < N))
 
 
 def linear_act(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None, activation: str = "none"):
@@ -89,7 +98,7 @@ def linear_act(x: torch.Tensor, weight: torch.Tensor, bias: torch.Tensor | None,
     linear_act_kernel[grid](
         x, weight, bias if bias is not None else x, y, M, N, K,
         x.stride(0), x.stride(1),
-        None, None,   # TODO: stride_wk, stride_wn —— 把 W[N, K] 当作 [K, N] 读
+        weight.stride(1), weight.stride(0),
         y.stride(0), y.stride(1),
         HAS_BIAS=bias is not None, ACTIVATION=activation,
         BLOCK_M=BM, BLOCK_N=BN, BLOCK_K=BK, GROUP_M=8, num_warps=8, num_stages=3,
