@@ -39,6 +39,15 @@ template <typename scalar_t>
 __global__ void swiglu_kernel(const scalar_t* __restrict__ g, const scalar_t* __restrict__ u,
                               scalar_t* __restrict__ out, int64_t n) {
     // TODO: grid-stride 循环；读入转 float（static_cast<float>），算 silu(g) * u，转回 scalar_t 写出
+    int64_t idx = (int64_t)blockDim.x * blockIdx.x + threadIdx.x;
+    int64_t stride = (int64_t)gridDim.x * blockDim.x;
+
+    for (int i = 0; i < n; i += stride) {
+        const float* float_g = static_cast<const float*>(g);
+        float * float_u = static_cast<float*>(u);
+
+        out[i] = static_cast<scalar_t*>(silu(g[i]) * u[i]);
+    }
 }
 
 // bf16 专用的向量化版本：每个线程一次读 16 字节 = 8 个 bf16（一个 uint4），
@@ -54,6 +63,11 @@ __global__ void swiglu_bf16x8_kernel(const __nv_bfloat16* __restrict__ g, const 
         //   2. 把这个 uint4 的地址 reinterpret_cast 成 __nv_bfloat162*，得到 4 对 bf16
         //   3. 每对用 __bfloat1622float2 转成 float2，算完用 __floats2bfloat162_rn 转回去
         //   4. 拼好的 uint4 写到 out
+
+        const uint4* uint4_g = reinterpret_cast<const uint4*>(g);
+        uint4* uint4_u = reinterpret_cast<uint4*>(u);
+
+        const __nv_bfloat* 
     }
     int64_t tail = n8 * 8 + tid;
     if (tail < n) {
